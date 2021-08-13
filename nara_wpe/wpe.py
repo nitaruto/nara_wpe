@@ -465,7 +465,7 @@ def hermite(x):
     return x.swapaxes(-2, -1).conj()
 
 
-def wpe_v0(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full'):
+def wpe_v0(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full', cgg_shape=0.0):
     """
     Closest implementation to
     https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=6255769 but rather
@@ -499,7 +499,7 @@ def wpe_v0(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
     X = np.copy(Y)
     if Y.ndim == 2:
         for iteration in range(iterations):
-            inverse_power = get_power_inverse(X, psd_context=psd_context)
+            inverse_power = get_power_inverse(X, psd_context=psd_context, cgg_shape=cgg_shape)
             filter_matrix_conj = get_filter_matrix_conj_v5(
                 Y[s], inverse_power[s], taps, delay
             )
@@ -519,7 +519,7 @@ def wpe_v0(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
     return X
 
 
-def wpe_v6(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full'):
+def wpe_v6(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full', cgg_shape=0.0):
     """
     Batched WPE implementation.
 
@@ -555,7 +555,7 @@ def wpe_v6(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
     X = np.copy(Y)
     Y_tilde = build_y_tilde(Y, taps, delay)
     for iteration in range(iterations):
-        inverse_power = get_power_inverse(X, psd_context=psd_context)
+        inverse_power = get_power_inverse(X, psd_context=psd_context, cgg_shape=cgg_shape)
         Y_tilde_inverse_power = Y_tilde * inverse_power[..., None, :]
         R = np.matmul(Y_tilde_inverse_power[s], hermite(Y_tilde[s]))
         P = np.matmul(Y_tilde_inverse_power[s], hermite(Y[s]))
@@ -565,7 +565,7 @@ def wpe_v6(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
     return X
 
 
-def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full'):
+def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='full', cgg_shape=0.0):
     """
     Batched and modular WPE version.
 
@@ -597,7 +597,7 @@ def wpe_v7(Y, taps=10, delay=3, iterations=3, psd_context=0, statistics_mode='fu
         raise ValueError(statistics_mode)
 
     for iteration in range(iterations):
-        inverse_power = get_power_inverse(X, psd_context=psd_context)
+        inverse_power = get_power_inverse(X, psd_context=psd_context, cgg_shape=cgg_shape)
         G = get_filter_matrix_v7(Y=Y[s], Y_tilde=Y_tilde[s], inverse_power=inverse_power[s])
         X = perform_filter_operation_v5(Y=Y, Y_tilde=Y_tilde, filter_matrix=G)
     return X
@@ -1090,7 +1090,7 @@ def _stable_positive_inverse(power):
     return inverse_power
 
 
-def get_power_inverse(signal, psd_context=0):
+def get_power_inverse(signal, psd_context=0, cgg_shape=0.0):
     """
     Assumes single frequency bin with shape (D, T).
 
@@ -1106,6 +1106,8 @@ def get_power_inverse(signal, psd_context=0):
     >>> get_power_inverse(s * 0.)
     array([1., 1., 1., 1., 1.])
     """
+    assert 0.0 <= cgg_shape <= 2.0
+
     power = np.mean(abs_square(signal), axis=-2)
 
     if np.isposinf(psd_context):
@@ -1122,6 +1124,10 @@ def get_power_inverse(signal, psd_context=0):
         pass
     else:
         raise ValueError(psd_context)
+
+    if cgg_shape != 0.0:
+        power **= (2.0 - cgg_shape) / 2.0
+
     return _stable_positive_inverse(power)
 
 
